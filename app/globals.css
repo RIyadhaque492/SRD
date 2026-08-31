@@ -1,0 +1,101 @@
+:root {
+  --ink: #14201c;
+  --ink-soft: #55635d;
+  --base: #eceee9;
+  --surface: #ffffff;
+  --rule: #c9d1cb;
+  --accent: #14634a;
+  --accent-soft: #dcebe4;
+  --alert: #9c3a1e;
+  --alert-soft: #f6e3dc;
+
+  --step: 4px;
+  --font: ui-sans-serif, "Segoe UI", Roboto, "Noto Sans Bengali", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--base);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.shell { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+
+header.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 12px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.masthead h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.masthead nav { display: flex; gap: 18px; font-size: 14px; }
+
+/* The pipeline rail — the one deliberately bold element. */
+.rail { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--rule);
+        border: 1px solid var(--rule); margin-bottom: 32px; }
+.rail .stage { background: var(--surface); padding: 18px 16px; position: relative; }
+.rail .stage .n { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; display: block; }
+.rail .stage .t { font-size: 13px; color: var(--ink-soft); }
+.rail .stage.live { background: var(--accent-soft); }
+.rail .stage.live .n { color: var(--accent); }
+
+@media (max-width: 700px) { .rail { grid-template-columns: repeat(2, 1fr); } }
+
+h2 { font-size: 15px; font-weight: 650; margin: 32px 0 10px; }
+p.note { color: var(--ink-soft); font-size: 14px; max-width: 66ch; }
+
+table { width: 100%; border-collapse: collapse; background: var(--surface);
+        border: 1px solid var(--rule); font-size: 14px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; color: var(--ink-soft); background: #f6f7f5; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; }
+
+.drop {
+  border: 1.5px dashed var(--rule);
+  background: var(--surface);
+  padding: 44px 24px;
+  text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop input { display: none; }
+
+button, .btn {
+  font: inherit; font-weight: 550;
+  background: var(--accent); color: #fff; border: 1px solid var(--accent);
+  padding: 8px 16px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: #0f5039; }
+button:disabled { opacity: .5; cursor: progress; }
+button.quiet { background: transparent; color: var(--accent); }
+button.quiet:hover { background: var(--accent-soft); }
+
+.msg { padding: 12px 14px; border-left: 3px solid var(--alert);
+       background: var(--alert-soft); font-size: 14px; margin-top: 16px; }
+.msg.ok { border-color: var(--accent); background: var(--accent-soft); }
+
+.field { display: grid; gap: 4px; margin-bottom: 14px; }
+.field label { font-size: 13px; color: var(--ink-soft); }
+.field input, .field select {
+  font: inherit; padding: 7px 10px; border: 1px solid var(--rule); background: var(--surface);
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
