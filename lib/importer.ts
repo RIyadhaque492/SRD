@@ -76,7 +76,7 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
 
     const target = TARGETS[targetKey];
     const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], {
-      header: 1, blankrows: false, defval: null, raw: false, cellDates: true,
+      header: 1, blankrows: false, defval: null, raw: false,
     });
 
     const header = findHeaderRow(grid, target);
@@ -109,10 +109,6 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
 
       // Sheet-specific touch-ups
       if (targetKey === 'members') {
-        if (values.member_name) {
-          const { en } = splitBilingual(values.member_name as string);
-          if (en) values.member_name = `${values.member_name}`;
-        }
         if (values.business_name) {
           const { bn, en } = splitBilingual(values.business_name as string);
           values.business_name_bn ??= bn;
