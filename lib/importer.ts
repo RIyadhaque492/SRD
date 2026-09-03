@@ -23,11 +23,6 @@ export interface SheetResult {
 
 interface Staged { excelRow: number; values: Record<string, unknown> }
 
-/**
- * Your sheets don't all put headers on row 1 — DB_Member has them on row 2,
- * FPRC and LMC on row 3. Rather than hard-coding that, score the first few
- * rows and take whichever matches the most known headers.
- */
 function findHeaderRow(grid: unknown[][], target: Target, scanDepth = 6) {
   const known = new Set(target.fields.flatMap((f) => f.headers.map(norm)));
   let best = { index: 0, hits: -1 };
@@ -55,12 +50,10 @@ function rowHash(target: string, values: Record<string, unknown>) {
 }
 
 /**
- * One INSERT for many rows.
- *
- * Rows in a sheet don't all carry the same columns, because empty cells are
- * dropped. So the statement uses the union of columns seen across the sheet
- * and pads the gaps with null. On conflict the update coalesces — a null in
- * the incoming row leaves the stored value alone rather than wiping it.
+ * One INSERT for many rows. Rows in a sheet don't all carry the same columns,
+ * because empty cells are dropped, so the statement uses the union of columns
+ * seen across the sheet and pads gaps with null. On conflict the update
+ * coalesces — a null in the incoming row leaves the stored value alone.
  */
 function buildStatement(target: Target, cols: string[], rows: Staged[]) {
   const params: unknown[] = [];
@@ -139,7 +132,6 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
     const staged: Staged[] = [];
     const seenCols = new Set<string>();
 
-    // --- pass 1: parse and validate in memory, no database calls ---
     for (let r = 0; r < body.length; r++) {
       const excelRow = header.index + r + 2;
       const row = body[r] || [];
@@ -180,12 +172,9 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
       staged.push({ excelRow, values });
     }
 
-    // --- pass 2: write in chunks ---
     const cols = Array.from(seenCols);
     let ok = 0;
     if (cols.length) {
-      // de-duplicate within the upload: Postgres rejects a statement that
-      // hits the same conflict key twice, so keep the last occurrence
       const byKey = new Map<string, Staged>();
       for (const s of staged) byKey.set(String(s.values[target.key]), s);
       const unique = Array.from(byKey.values());
