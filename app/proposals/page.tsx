@@ -9,8 +9,9 @@ export default async function Proposals() {
   return (
     <>
       <h2>Proposals</h2>
-      <p className="note">Installment is computed from amount, duration and the member&apos;s
-        off day at read time — it is never stored, so changing the rate updates every row.</p>
+      <p className="note">Installment comes from the official rate schedule, matched on amount,
+        duration and the member&apos;s off day. Combinations the schedule doesn&apos;t cover fall
+        back to a 3% monthly estimate — those are the ones to check by hand.</p>
       <table>
         <thead>
           <tr>
