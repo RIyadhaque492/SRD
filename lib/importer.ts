@@ -4,6 +4,11 @@ import { TARGETS, detectTarget, norm, type Target } from './columns';
 import { coerce, splitBilingual } from './calc';
 import { sql } from './db';
 
+/** Rows per INSERT. Postgres caps a statement at 65535 parameters, so with
+ *  ~30 columns this stays well inside the limit while cutting a 45,000-row
+ *  sheet from ~45,000 round trips to ~90. */
+const CHUNK = 500;
+
 export interface RowError { row: number; problem: string }
 export interface SheetResult {
   sheet: string;
@@ -15,6 +20,8 @@ export interface SheetResult {
   errors: RowError[];
   skipped?: string;
 }
+
+interface Staged { excelRow: number; values: Record<string, unknown> }
 
 /**
  * Your sheets don't all put headers on row 1 — DB_Member has them on row 2,
@@ -47,20 +54,61 @@ function rowHash(target: string, values: Record<string, unknown>) {
   return createHash('sha1').update(target + JSON.stringify(values)).digest('hex');
 }
 
-/** Build an INSERT ... ON CONFLICT DO UPDATE for one row. */
-async function upsert(target: Target, values: Record<string, unknown>) {
-  const cols = Object.keys(values);
-  const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+/**
+ * One INSERT for many rows.
+ *
+ * Rows in a sheet don't all carry the same columns, because empty cells are
+ * dropped. So the statement uses the union of columns seen across the sheet
+ * and pads the gaps with null. On conflict the update coalesces — a null in
+ * the incoming row leaves the stored value alone rather than wiping it.
+ */
+function buildStatement(target: Target, cols: string[], rows: Staged[]) {
+  const params: unknown[] = [];
+  const tuples = rows.map((r) => {
+    const slots = cols.map((c) => {
+      params.push(r.values[c] ?? null);
+      return `$${params.length}`;
+    });
+    return `(${slots.join(', ')})`;
+  });
+
   const updates = cols
     .filter((c) => c !== target.key)
-    .map((c) => `${c} = excluded.${c}`)
+    .map((c) => `${c} = coalesce(excluded.${c}, ${target.table}.${c})`)
     .join(', ');
 
   const text =
-    `insert into ${target.table} (${cols.join(', ')}) values (${placeholders}) ` +
-    `on conflict (${target.key}) do update set ${updates || `${target.key} = excluded.${target.key}`}`;
+    `insert into ${target.table} (${cols.join(', ')}) values ${tuples.join(', ')} ` +
+    `on conflict (${target.key}) do update set ` +
+    (updates || `${target.key} = excluded.${target.key}`);
 
-  await sql.query(text, cols.map((c) => values[c]));
+  return { text, params };
+}
+
+/**
+ * Write a chunk in one statement. If the chunk fails, fall back to one
+ * statement per row so a single bad row is reported by its Excel row number
+ * instead of taking 499 good rows down with it.
+ */
+async function writeChunk(target: Target, cols: string[], rows: Staged[]) {
+  const errors: RowError[] = [];
+  try {
+    const { text, params } = buildStatement(target, cols, rows);
+    await sql.query(text, params);
+    return { ok: rows.length, errors };
+  } catch {
+    let ok = 0;
+    for (const r of rows) {
+      try {
+        const { text, params } = buildStatement(target, cols, [r]);
+        await sql.query(text, params);
+        ok++;
+      } catch (e) {
+        errors.push({ row: r.excelRow, problem: (e as Error).message.slice(0, 200) });
+      }
+    }
+    return { ok, errors };
+  }
 }
 
 export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
@@ -88,8 +136,10 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
     const index = buildColumnIndex(grid[header.index], target);
     const body = grid.slice(header.index + 1);
     const errors: RowError[] = [];
-    let ok = 0;
+    const staged: Staged[] = [];
+    const seenCols = new Set<string>();
 
+    // --- pass 1: parse and validate in memory, no database calls ---
     for (let r = 0; r < body.length; r++) {
       const excelRow = header.index + r + 2;
       const row = body[r] || [];
@@ -107,7 +157,6 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
 
       if (bad) { errors.push({ row: excelRow, problem: bad }); continue; }
 
-      // Sheet-specific touch-ups
       if (targetKey === 'members') {
         if (values.business_name) {
           const { bn, en } = splitBilingual(values.business_name as string);
@@ -127,11 +176,24 @@ export async function importWorkbook(buffer: ArrayBuffer, filename: string) {
         values.source_hash = rowHash(targetKey, values);
       }
 
-      try {
-        await upsert(target, values);
-        ok++;
-      } catch (e) {
-        errors.push({ row: excelRow, problem: (e as Error).message.slice(0, 200) });
+      Object.keys(values).forEach((c) => seenCols.add(c));
+      staged.push({ excelRow, values });
+    }
+
+    // --- pass 2: write in chunks ---
+    const cols = Array.from(seenCols);
+    let ok = 0;
+    if (cols.length) {
+      // de-duplicate within the upload: Postgres rejects a statement that
+      // hits the same conflict key twice, so keep the last occurrence
+      const byKey = new Map<string, Staged>();
+      for (const s of staged) byKey.set(String(s.values[target.key]), s);
+      const unique = Array.from(byKey.values());
+
+      for (let i = 0; i < unique.length; i += CHUNK) {
+        const res = await writeChunk(target, cols, unique.slice(i, i + CHUNK));
+        ok += res.ok;
+        errors.push(...res.errors);
       }
     }
 
